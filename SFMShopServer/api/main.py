@@ -145,5 +145,26 @@ def get_user_orders(user_id: int):
         raise HTTPException(500, "Ошибка сервера")
 
 
+def test_api():
+    from fastapi.testclient import TestClient
+
+    client = TestClient(app)
+
+    # Тест GET /products
+    response = client.get("/products")
+    assert response.status_code == 200
+    print("GET /products: OK")
+
+    # Тест GET /products/{id}
+    response = client.get("/products/1")
+    assert response.status_code == 200
+    print("GET /products/1: OK")
+
+    # Тест POST /orders
+    response = client.post("/orders", json={"user_id": 1, "product_id": 2, "quantity": 1})
+    assert response.status_code == 201
+    print("POST /orders: OK")
+
+
 if __name__ == "__main__":
     uvicorn.run("main:app", reload=True)
