@@ -1,0 +1,166 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+EXPLAIN ANALYZE SELECT * FROM products WHERE name = 'Ноутбук';
+- Seq Scan
+
+CREATE INDEX idx_products_name ON products(name);
+
+EXPLAIN ANALYZE SELECT * FROM products WHERE name = 'Ноутбук';
+- Index Scan
+
+
+EXPLAIN ANALYZE SELECT * FROM orders WHERE user_id = 1;
+- Seq Scan
+
+CREATE INDEX idx_orders_user_id ON orders(user_id);
+
+EXPLAIN ANALYZE SELECT * FROM orders WHERE user_id = 1;
+- Index Scan
+
+EXPLAIN ANALYZE
+SELECT o.id, o.total, p.name
+FROM orders o
+JOIN products p ON o.product_id = p.id
+WHERE o.user_id = 1;
+- Index Scan
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+1.
+
+запрос:
+EXPLAIN ANALYZE
+SELECT *
+FROM orders
+WHERE createdat = '2026-04-05 20:25:32.772277';
+
+ответ:
+"Seq Scan on orders  (cost=0.00..23.09 rows=1 width=24) (actual time=0.084..0.102 rows=1 loops=1)"
+"  Filter: ((userid = 333) AND (createdat = '2026-03-07 17:49:36'::timestamp without time zone))"
+"  Rows Removed by Filter: 1005"
+"Planning Time: 0.095 ms"
+"Execution Time: 0.130 ms"
+
+поясню: сканирование было последовательное, индексы не применялись, время выполнения 0.013..0.016
+
+2 и 3 и 4.
+
+создаем индексы:
+CREATE INDEX idx_orders_userid on orders(userid);
+CREATE INDEX idx_orders_createdat ON orders(createdat);
+
+результат:
+"Index Scan using idx_orders_createdat on orders  (cost=0.28..8.29 rows=1 width=24) (actual time=0.050..0.054 rows=1 loops=1)"
+"  Index Cond: (createdat = '2026-03-07 17:49:36'::timestamp without time zone)"
+"  Filter: (userid = 333)"
+"Planning Time: 0.211 ms"
+"Execution Time: 0.087 ms"
+
+теперь ищем по индексу и гораздо быстрее (увеличение скорости примерно в 2 раза)
+
+
+создадим композитный индекс
+"Index Scan using idx_userid_and_createdat on orders  (cost=0.28..8.29 rows=1 width=24) (actual time=0.029..0.032 rows=1 loops=1)"
+"  Index Cond: ((userid = 333) AND (createdat = '2026-03-07 17:49:36'::timestamp without time zone))"
+"Planning Time: 0.207 ms"
+"Execution Time: 0.056 ms"
+
+видим еще увеличение скорости (в 3 раза от первоначального запроса без индексов)
+
+
+
+
+
+
+
+
+
+async def get_user_orders_with_items(user_id: int):
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(Order)
+            .options(
+                selectinload(Order.items).selectinload(OrderItem.product)
+            )
+            .where(Order.userid == user_id)
+        )
+        orders = result.scalars().all()
+
+        orders_data = []
+        for order in orders:
+            items_data = []
+            for item in order.items:
+                items_data.append({
+                    "product_name": item.product.name,
+                    "price_per_unit": float(item.product.price),
+                    "quantity": item.quantity,
+                    "total_sum": float(item.product.price) * item.quantity
+                })
+            orders_data.append({
+                "order_id": order.id,
+                "total": float(order.total),
+                "createdat": order.createdat,
+                "items": items_data
+            })
+        return orders_data
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+создай 1000 заказов
+id  user_id  total   createdat
+1	1	51500.00	"2026-03-15 15:15:59.046995"
+2	2	15500.00	"2026-03-15 15:15:59.046995"
+3	7	2000.00	"2026-04-05 20:25:32.772277"
+4	7	2000.00	"2026-04-05 20:28:33.237423"
+5	7	2000.00	"2026-04-05 20:30:01.74287"
+6	7	2000.00	"2026-04-05 20:30:19.808388"
+
+
+
+
+
