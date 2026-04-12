@@ -52,6 +52,47 @@ async def get_db():
         yield session
 
 
+@app.post("/orders/process")
+async def process_orders_endpoint(
+    order_ids: list[int],
+    session: AsyncSession = Depends(get_session)
+):
+    try:
+        results = await process_orders_async(order_ids, session)
+
+        success_count = len([r for r in results if r is not None])
+
+        return {
+            "status": "success",
+            "processed": success_count,
+            "results": results
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/orders/process-background")
+async def process_orders_background(
+    order_ids: list[int],
+    background_tasks: BackgroundTasks,
+    session: AsyncSession = Depends(get_session)
+):
+    background_tasks.add_task(process_orders_async, order_ids, session)
+
+    return {
+        "status": "accepted",
+        "message": "Обработка заказов запущена в фоне"
+    }
+
+
+@app.get("/orders/performance")
+async def performance_check(
+    session: AsyncSession = Depends(get_session)
+):
+    return await measure_performance(session)
+
+
 @app.get("/products")
 async def get_products(limit: int = Query(10), offset: int = Query(0), db=Depends(get_db)):
     try:
